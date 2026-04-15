@@ -44,12 +44,20 @@ def _chunk(seq: str, window: int, stride: int) -> list[str]:
     return out
 
 
+def _looks_like_dna(s: str) -> bool:
+    """Heuristic: a non-empty string whose first 1 kb is only A/C/G/T/N is DNA."""
+    if not s:
+        return False
+    sample = s[:1000].upper()
+    return set(sample) <= set("ACGTN")
+
+
 def _load_records(sequence_or_fasta: str | Path) -> list[tuple[str, str]]:
     """Return list of (accession, sequence) tuples."""
-    if isinstance(sequence_or_fasta, str) and not Path(sequence_or_fasta).exists():
-        # Treat as a raw DNA string
-        if set(sequence_or_fasta.upper()) <= set("ACGTN"):
-            return [("query", sequence_or_fasta.upper())]
+    # Raw DNA string check first — must happen before Path(), because long DNA
+    # strings trip macOS "File name too long" when Path.exists() is called.
+    if isinstance(sequence_or_fasta, str) and _looks_like_dna(sequence_or_fasta):
+        return [("query", sequence_or_fasta.upper())]
     path = Path(sequence_or_fasta)
     if not path.exists():
         raise FileNotFoundError(f"Not a DNA string and not a file: {sequence_or_fasta}")
