@@ -27,6 +27,7 @@ dependencies = [
     "rich>=13.7",
     "matplotlib>=3.8",
     "requests>=2.31",
+    "einops>=0.7",  # required by DNABERT-2's trust_remote_code modeling file
 ]
 
 [project.optional-dependencies]

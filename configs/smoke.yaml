@@ -1,5 +1,7 @@
-# Tiny smoke-test config. Runs on CPU in ~2 minutes on a small subset.
-model_name: zhihan1996/DNABERT-2-117M
+# Tiny smoke-test config. Runs on CPU/MPS in ~2-5 minutes on a small subset.
+# Uses Nucleotide Transformer v2 50M (smallest variant) — standard transformers
+# code paths, no Triton/CUDA-only kernels, works on Apple Silicon.
+model_name: InstaDeepAI/nucleotide-transformer-v2-50m-multi-species
 trust_remote_code: true
 
 data:

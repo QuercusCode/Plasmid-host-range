@@ -1,12 +1,14 @@
-# Full fine-tuning config. Assumes a single GPU with >= 16 GB VRAM.
-model_name: zhihan1996/DNABERT-2-117M
+# Full fine-tuning config. Runs on a single GPU (>= 16 GB VRAM) or Apple Silicon MPS.
+# Uses Nucleotide Transformer v2 100M — standard transformers code paths, works on
+# both CUDA and MPS (no Triton / Flash Attention requirements).
+model_name: InstaDeepAI/nucleotide-transformer-v2-100m-multi-species
 trust_remote_code: true
 
 data:
   processed_dir: data/processed
-  window_size: 1000          # bases per training example
+  window_size: 1000          # bases per training example (NT-v2 uses 6-mer tokens)
   eval_windows_per_plasmid: 8
-  max_tokens: 512
+  max_tokens: 256            # ~167 6-mer tokens for a 1000bp window, with headroom
 
 training:
   output_dir: checkpoints/default
