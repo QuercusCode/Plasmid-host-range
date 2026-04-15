@@ -29,16 +29,27 @@ uv pip install -e ".[dev]"
 
 ## Data
 
-PLSDB 2025 is hosted at <https://ccb-microbe.cs.uni-saarland.de/plsdb2025/>. Download the
-nucleotide FASTA and the metadata TSV into `data/raw/`:
+PLSDB is distributed on Figshare. The current release is **PLSDB 2024_05_31_v2**
+(article [27252609](https://figshare.com/articles/dataset/PLSDB_2024_05_31_v2/27252609)).
+The `download` command hits the public Figshare API and pulls only the files we need
+(≈ 2 GB total, mostly `sequences.fasta.bz2`):
 
 ```bash
 plasmid-host-range download
 ```
 
-> The exact filenames on the PLSDB 2025 site may change between releases. If the default URLs
-> in `src/plasmid_host_range/data/download.py` 404, pass `--fasta-url` and `--metadata-url`
-> explicitly, or drop the files into `data/raw/plsdb.fna` and `data/raw/plsdb.tsv` manually.
+This fetches into `data/raw/`:
+
+| File | Purpose |
+|---|---|
+| `sequences.fasta` (decompressed from `.bz2`) | Plasmid nucleotide sequences |
+| `nuccore.csv` | Per-plasmid metadata (accession, taxon ID, length, …) |
+| `taxonomy.csv` | Taxon ID → lineage (genus, species, …) |
+| `biosample.csv` | Biosample-level host info (fallback source) |
+| `README.md` | Upstream PLSDB column docs |
+
+The download is resumable at the file level: re-running `download` skips files that
+are already present and non-empty.
 
 Then build the processed splits:
 
@@ -46,9 +57,11 @@ Then build the processed splits:
 plasmid-host-range preprocess --top-n-genera 20
 ```
 
-This writes `data/processed/{train,val,test}.parquet` with columns
-`{accession, sequence, label, genus}`, using a **host-species-grouped** train/val/test split
-to avoid leaking near-identical plasmids across splits.
+This joins `nuccore.csv` with `taxonomy.csv` on taxon ID, filters plasmids by length,
+labels the top-N most common host genera (plus `Other`), and writes
+`data/processed/{train,val,test}.parquet` with columns
+`{accession, sequence, label, genus, species}`, using a **host-species-grouped**
+train/val/test split to avoid leaking near-identical plasmids across splits.
 
 ## Train
 

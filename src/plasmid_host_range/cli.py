@@ -7,22 +7,26 @@ from pathlib import Path
 import typer
 from rich import print
 
-from .data.download import DEFAULT_FASTA_URL, DEFAULT_METADATA_URL, download_plsdb
+from .data.download import DEFAULT_ARTICLE_ID, download_plsdb
 from .data.preprocess import PreprocessConfig, preprocess as run_preprocess
 
-app = typer.Typer(help="Predict plasmid host genus from nucleotide sequence (PLSDB 2025).")
+app = typer.Typer(help="Predict plasmid host genus from nucleotide sequence (PLSDB).")
 
 
 @app.command()
 def download(
     out_dir: Path = typer.Option(Path("data/raw"), help="Where to save raw PLSDB files."),
-    fasta_url: str = typer.Option(DEFAULT_FASTA_URL, help="Override FASTA URL."),
-    metadata_url: str = typer.Option(DEFAULT_METADATA_URL, help="Override metadata TSV URL."),
+    article_id: int = typer.Option(
+        DEFAULT_ARTICLE_ID, help="Figshare article ID. Default is PLSDB 2024_05_31_v2."
+    ),
+    no_decompress: bool = typer.Option(
+        False, "--no-decompress", help="Skip .bz2 decompression (useful for slow disks)."
+    ),
 ) -> None:
-    """Download PLSDB 2025 nucleotide FASTA and metadata TSV."""
-    fasta, meta = download_plsdb(out_dir, fasta_url=fasta_url, metadata_url=metadata_url)
-    print(f"[green]fasta:[/green] {fasta}")
-    print(f"[green]metadata:[/green] {meta}")
+    """Download PLSDB FASTA + metadata from Figshare."""
+    result = download_plsdb(out_dir, article_id=article_id, decompress=not no_decompress)
+    for name, path in result.items():
+        print(f"[green]{name}:[/green] {path}")
 
 
 @app.command()
