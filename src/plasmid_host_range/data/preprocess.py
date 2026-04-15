@@ -26,10 +26,10 @@ ACCESSION_CANDIDATES = [
     "NUCCORE_ACC", "NUCCORE_Accession", "ACC_NUCCORE", "accession", "Accession", "ACC",
 ]
 NUCCORE_TAXON_ID_CANDIDATES = [
-    "NUCCORE_TaxonID", "TAXONOMY_TaxonID", "TaxonID", "taxon_id", "Taxid",
+    "TAXONOMY_UID", "NUCCORE_TaxonID", "TAXONOMY_TaxonID", "TaxonID", "taxon_id", "Taxid",
 ]
 TAXONOMY_ID_CANDIDATES = [
-    "TAXONOMY_TaxonID", "TaxonID", "taxon_id", "Taxid",
+    "TAXONOMY_UID", "TAXONOMY_TaxonID", "TaxonID", "taxon_id", "Taxid",
 ]
 GENUS_CANDIDATES = ["TAXONOMY_genus", "genus", "Genus"]
 SPECIES_CANDIDATES = ["TAXONOMY_species", "species", "Species"]
