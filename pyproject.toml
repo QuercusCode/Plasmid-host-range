@@ -12,10 +12,14 @@ license = { text = "MIT" }
 authors = [{ name = "Quercus" }]
 dependencies = [
     "torch>=2.1",
-    "transformers>=4.40",
-    "tokenizers>=0.15",
-    "accelerate>=0.28",
-    "datasets>=2.18",
+    # Pin transformers to 4.x: every DNA foundation model we might use ships a
+    # custom modeling file via trust_remote_code, and those files reference
+    # transformers internals that were renamed/removed in 5.x (e.g.
+    # find_pruneable_heads_and_indices). The 4.x line is mature and works.
+    "transformers>=4.40,<5",
+    "tokenizers>=0.15,<0.21",
+    "accelerate>=0.28,<1.5",
+    "datasets>=2.18,<3.0",
     "biopython>=1.83",
     "pandas>=2.1",
     "pyarrow>=15",
