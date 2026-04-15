@@ -32,10 +32,22 @@ REQUIRED_FILES: tuple[str, ...] = (
 
 
 def _list_figshare_files(article_id: int) -> list[dict]:
+    """Return every file in the Figshare article, paging through the API."""
     url = FIGSHARE_API.format(article_id=article_id)
-    r = requests.get(url, timeout=60)
-    r.raise_for_status()
-    return r.json()
+    all_files: list[dict] = []
+    page = 1
+    page_size = 1000  # Figshare's documented max
+    while True:
+        r = requests.get(url, params={"page": page, "page_size": page_size}, timeout=60)
+        r.raise_for_status()
+        batch = r.json()
+        if not batch:
+            break
+        all_files.extend(batch)
+        if len(batch) < page_size:
+            break
+        page += 1
+    return all_files
 
 
 def _stream_download(url: str, dest: Path) -> None:
