@@ -1,0 +1,14 @@
+/data/
+/checkpoints/
+/reports/
+/wandb/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.coverage
+dist/
+build/
+*.egg-info/

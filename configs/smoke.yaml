@@ -1,0 +1,30 @@
+# Tiny smoke-test config. Runs on CPU in ~2 minutes on a small subset.
+model_name: zhihan1996/DNABERT-2-117M
+trust_remote_code: true
+
+data:
+  processed_dir: data/processed
+  window_size: 500
+  eval_windows_per_plasmid: 2
+  max_tokens: 256
+  subsample_train: 64
+  subsample_eval: 16
+
+training:
+  output_dir: checkpoints/smoke
+  num_train_epochs: 1
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 8
+  learning_rate: 5.0e-5
+  weight_decay: 0.0
+  warmup_ratio: 0.0
+  eval_strategy: epoch
+  save_strategy: "no"
+  load_best_model_at_end: false
+  class_weighted_loss: false
+  seed: 0
+  fp16: false
+
+labels:
+  top_n_genera: 3
+  other_label: Other

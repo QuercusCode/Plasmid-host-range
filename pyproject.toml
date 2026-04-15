@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "plasmid-host-range"
+version = "0.1.0"
+description = "Predict bacterial host genus of a plasmid from its nucleotide sequence (PLSDB 2025)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Quercus" }]
+dependencies = [
+    "torch>=2.1",
+    "transformers>=4.40",
+    "tokenizers>=0.15",
+    "accelerate>=0.28",
+    "datasets>=2.18",
+    "biopython>=1.83",
+    "pandas>=2.1",
+    "pyarrow>=15",
+    "numpy>=1.26",
+    "scikit-learn>=1.4",
+    "pyyaml>=6.0",
+    "tqdm>=4.66",
+    "typer>=0.12",
+    "rich>=13.7",
+    "matplotlib>=3.8",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.4",
+]
+xgboost = ["xgboost>=2.0"]
+
+[project.scripts]
+plasmid-host-range = "plasmid_host_range.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/plasmid_host_range"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
