@@ -7,15 +7,18 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, WeightedRandomSampler
 
 
 class PlasmidWindowDataset(Dataset):
     """Each ``__getitem__`` returns a tokenized window from a plasmid.
 
-    * In ``mode='train'`` a random window is sampled per call (data augmentation).
-    * In ``mode='eval'`` ``eval_windows_per_plasmid`` evenly-spaced windows are enumerated
-      deterministically; ``__len__`` accounts for this.
+    * In ``mode='train'``, ``train_windows_per_plasmid`` random windows are
+      enumerated per epoch (data augmentation through multi-window sampling).
+      This means the model sees multiple views of each plasmid per epoch
+      instead of just one, dramatically increasing effective sequence coverage.
+    * In ``mode='eval'``, ``eval_windows_per_plasmid`` evenly-spaced windows
+      are enumerated deterministically for aggregation.
     """
 
     def __init__(
@@ -25,6 +28,7 @@ class PlasmidWindowDataset(Dataset):
         window_size: int = 1_000,
         max_tokens: int = 512,
         mode: Literal["train", "eval"] = "train",
+        train_windows_per_plasmid: int = 1,
         eval_windows_per_plasmid: int = 8,
         subsample: int | None = None,
         seed: int = 0,
@@ -36,12 +40,13 @@ class PlasmidWindowDataset(Dataset):
         self.window_size = window_size
         self.max_tokens = max_tokens
         self.mode = mode
+        self.train_windows = max(1, train_windows_per_plasmid)
         self.eval_windows = eval_windows_per_plasmid
         self._rng = np.random.default_rng(seed)
 
     def __len__(self) -> int:
         if self.mode == "train":
-            return len(self.df)
+            return len(self.df) * self.train_windows
         return len(self.df) * self.eval_windows
 
     def _sample_window(self, seq: str) -> str:
@@ -55,7 +60,6 @@ class PlasmidWindowDataset(Dataset):
         n = len(seq)
         if n <= self.window_size:
             return seq
-        # k-th of eval_windows evenly-spaced starts
         stops = max(1, self.eval_windows)
         if stops == 1:
             start = (n - self.window_size) // 2
@@ -65,7 +69,8 @@ class PlasmidWindowDataset(Dataset):
 
     def __getitem__(self, idx: int) -> dict:
         if self.mode == "train":
-            row = self.df.iloc[idx]
+            plasmid_idx = idx % len(self.df)
+            row = self.df.iloc[plasmid_idx]
             window = self._sample_window(row["sequence"])
         else:
             plasmid_idx, k = divmod(idx, self.eval_windows)
@@ -90,3 +95,27 @@ class PlasmidWindowDataset(Dataset):
     @property
     def labels(self) -> np.ndarray:
         return self.df["label"].to_numpy()
+
+    @property
+    def expanded_labels(self) -> np.ndarray:
+        """Labels expanded for multi-window: one label per training sample."""
+        base = self.df["label"].to_numpy()
+        if self.mode == "train":
+            return np.tile(base, self.train_windows)
+        return np.tile(base, self.eval_windows)
+
+
+def build_oversampler(dataset: PlasmidWindowDataset) -> WeightedRandomSampler:
+    """Build a WeightedRandomSampler that oversamples rare classes so each class
+    is seen roughly equally often per epoch. Critical for imbalanced datasets
+    where 'Other' and 'Escherichia' dominate."""
+    labels = dataset.expanded_labels
+    class_counts = np.bincount(labels)
+    # Inverse frequency: rarer classes get higher weight
+    class_weights = 1.0 / np.where(class_counts == 0, 1, class_counts)
+    sample_weights = class_weights[labels]
+    return WeightedRandomSampler(
+        weights=torch.tensor(sample_weights, dtype=torch.float64),
+        num_samples=len(labels),
+        replacement=True,
+    )

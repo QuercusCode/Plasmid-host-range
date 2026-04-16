@@ -13,7 +13,7 @@ import yaml
 from sklearn.metrics import accuracy_score, f1_score
 from transformers import Trainer, TrainingArguments
 
-from .data.dataset import PlasmidWindowDataset
+from .data.dataset import PlasmidWindowDataset, build_oversampler
 from .data.splits import compute_class_weights
 from .model import load_model
 
@@ -76,6 +76,7 @@ def train_from_config(config_path: str | Path) -> TrainResult:
         window_size=data_cfg["window_size"],
         max_tokens=data_cfg["max_tokens"],
         mode="train",
+        train_windows_per_plasmid=data_cfg.get("train_windows_per_plasmid", 1),
         subsample=data_cfg.get("subsample_train"),
         seed=train_cfg.get("seed", 0),
     )
@@ -98,6 +99,13 @@ def train_from_config(config_path: str | Path) -> TrainResult:
     output_dir = Path(train_cfg["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Build oversampler if requested
+    sampler = None
+    if train_cfg.get("oversample_rare_classes", False):
+        sampler = build_oversampler(train_ds)
+
+    lr_scheduler_type = train_cfg.get("lr_scheduler_type", "linear")
+
     args = TrainingArguments(
         output_dir=str(output_dir),
         num_train_epochs=train_cfg["num_train_epochs"],
@@ -106,6 +114,7 @@ def train_from_config(config_path: str | Path) -> TrainResult:
         learning_rate=train_cfg["learning_rate"],
         weight_decay=train_cfg.get("weight_decay", 0.0),
         warmup_ratio=train_cfg.get("warmup_ratio", 0.0),
+        lr_scheduler_type=lr_scheduler_type,
         eval_strategy=train_cfg.get("eval_strategy", "epoch"),
         save_strategy=train_cfg.get("save_strategy", "epoch"),
         save_total_limit=train_cfg.get("save_total_limit", 2),
@@ -115,16 +124,27 @@ def train_from_config(config_path: str | Path) -> TrainResult:
         fp16=train_cfg.get("fp16", False),
         seed=train_cfg.get("seed", 42),
         report_to=[],
-        logging_steps=20,
+        logging_steps=50,
     )
 
-    trainer = _WeightedTrainer(
+    # If using oversampler, HF Trainer needs to NOT shuffle (sampler handles ordering)
+    trainer_kwargs = {}
+    if sampler is not None:
+        # We pass the sampler via a custom data collator-like hook. HF Trainer
+        # accepts a custom sampler when we override get_train_dataloader, but
+        # the simpler route is to just set shuffle=False and pass data_collator.
+        # Actually, HF Trainer directly does not accept a sampler kwarg, so we
+        # subclass and override.
+        pass
+
+    trainer = _OversamplingTrainer(
         model=loaded.model,
         args=args,
         train_dataset=train_ds,
         eval_dataset=val_ds,
         compute_metrics=_compute_metrics,
         class_weights=class_weights,
+        train_sampler=sampler,
     )
 
     trainer.train()
@@ -137,3 +157,16 @@ def train_from_config(config_path: str | Path) -> TrainResult:
     (best_dir / "val_metrics.json").write_text(json.dumps(metrics, indent=2))
 
     return TrainResult(output_dir=best_dir, metrics=metrics, label_names=label_names)
+
+
+class _OversamplingTrainer(_WeightedTrainer):
+    """Extends _WeightedTrainer with optional oversampling via a custom sampler."""
+
+    def __init__(self, *args, train_sampler=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._train_sampler = train_sampler
+
+    def _get_train_sampler(self):
+        if self._train_sampler is not None:
+            return self._train_sampler
+        return super()._get_train_sampler()

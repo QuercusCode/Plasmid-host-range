@@ -1,0 +1,48 @@
+# Improved Colab config (v2). Key changes from v1:
+#
+# 1. train_windows_per_plasmid: 6  — sample 6 random windows per plasmid per epoch
+#    instead of 1. This means the model sees 6× more of each plasmid's sequence.
+# 2. window_size: 3000             — 3× longer windows (NT-v2 handles up to ~6000 bp).
+#    More context per window = better genus signal.
+# 3. oversample_rare_classes: true — WeightedRandomSampler so rare genera like
+#    Borrelia/Vibrio/Xanthomonas appear as often as Escherichia during training.
+# 4. lr_scheduler_type: cosine     — cosine decay is generally better than linear
+#    for fine-tuning pretrained models.
+# 5. num_train_epochs: 10          — more epochs to compensate for the larger
+#    effective dataset (6 windows × 62k plasmids = 376k samples/epoch).
+# 6. per_device_train_batch_size: 16 — smaller batch to fit longer windows in VRAM.
+#
+model_name: InstaDeepAI/nucleotide-transformer-v2-100m-multi-species
+trust_remote_code: true
+
+data:
+  processed_dir: data/processed
+  window_size: 3000              # 3× longer context than v1 (was 1000)
+  train_windows_per_plasmid: 6   # 6 random windows per plasmid per epoch (was 1)
+  eval_windows_per_plasmid: 10   # more eval windows for robust aggregation
+  max_tokens: 512                # ~500 6-mer tokens covers 3000 bp
+
+training:
+  # NOTE: output_dir is overridden by the notebook to point at Google Drive.
+  output_dir: checkpoints/colab_v2_run
+  num_train_epochs: 10
+  per_device_train_batch_size: 16
+  per_device_eval_batch_size: 32
+  learning_rate: 2.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.06
+  lr_scheduler_type: cosine
+  eval_strategy: epoch
+  save_strategy: epoch
+  save_total_limit: 3
+  load_best_model_at_end: true
+  metric_for_best_model: macro_f1
+  greater_is_better: true
+  class_weighted_loss: true
+  oversample_rare_classes: true
+  seed: 42
+  fp16: true
+
+labels:
+  top_n_genera: 20
+  other_label: Other
