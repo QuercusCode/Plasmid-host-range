@@ -35,10 +35,13 @@ def kmer_baseline_eval(
     num_labels: int,
     k: int = 6,
     max_train: int = 20_000,
+    subsample_test: int | None = None,
     seed: int = 0,
 ) -> dict:
     train = pd.read_parquet(train_path)
     test = pd.read_parquet(test_path)
+    if subsample_test is not None and subsample_test < len(test):
+        test = test.sample(n=subsample_test, random_state=seed).reset_index(drop=True)
     if len(train) > max_train:
         train = train.sample(n=max_train, random_state=seed).reset_index(drop=True)
 

@@ -41,6 +41,7 @@ dev = [
     "ruff>=0.4",
 ]
 xgboost = ["xgboost>=2.0"]
+ani = ["datasketch>=1.6"]
 
 [project.scripts]
 plasmid-host-range = "plasmid_host_range.cli:app"

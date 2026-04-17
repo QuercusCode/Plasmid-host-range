@@ -93,6 +93,63 @@ def evaluate(
 
 
 @app.command()
+def ani_validate(
+    checkpoint: Path = typer.Option(..., help="Path to fine-tuned checkpoint directory."),
+    processed_dir: Path = typer.Option(Path("data/processed")),
+    reports_dir: Path = typer.Option(Path("reports")),
+    window_size: int = typer.Option(3_000),
+    max_tokens: int = typer.Option(512),
+    eval_windows: int = typer.Option(5, help="Eval windows per plasmid (fewer = faster on CPU)."),
+    batch_size: int = typer.Option(8, help="Use 8 for CPU, 32+ for GPU."),
+    subsample: int = typer.Option(None, help="Randomly sample N plasmids for fast CPU eval."),
+    device: str = typer.Option(None, help="'cpu' or 'cuda'. Auto-detected if omitted."),
+    no_baseline: bool = typer.Option(False, "--no-baseline"),
+    seed: int = typer.Option(42),
+) -> None:
+    """Build an ANI-clustered test split and evaluate the model on it.
+
+    This is the publication-grade validation: no plasmid in the test set shares
+    ≥95% ANI with any training plasmid, ruling out plasmid-family memorisation.
+    Requires:  pip install datasketch
+    """
+    from .data.ani_cluster import save_ani_test_split
+    from .evaluate import evaluate_checkpoint
+
+    print("[bold]Step 1/2:[/bold] Computing ANI clusters and creating test_ani.parquet …")
+    print("  (This may take 30–60 minutes on CPU for 70k plasmids — grab a coffee.)")
+    test_ani_path = save_ani_test_split(processed_dir, seed=seed)
+    print(f"[green]ANI test split:[/green] {test_ani_path}")
+
+    print("\n[bold]Step 2/2:[/bold] Evaluating model on ANI test split …")
+    metrics = evaluate_checkpoint(
+        checkpoint_dir=checkpoint,
+        processed_dir=processed_dir,
+        reports_dir=reports_dir,
+        window_size=window_size,
+        max_tokens=max_tokens,
+        eval_windows_per_plasmid=eval_windows,
+        batch_size=batch_size,
+        run_baseline=not no_baseline,
+        test_parquet=test_ani_path,
+        device=device,
+        subsample=subsample,
+        seed=seed,
+    )
+
+    print("\n[bold]ANI VALIDATION RESULTS[/bold]")
+    m = metrics["model"]
+    print(f"  Top-1 accuracy : {m['top1_accuracy']:.3f}")
+    print(f"  Top-3 accuracy : {m['top3_accuracy']:.3f}")
+    print(f"  Macro F1       : {m['macro_f1']:.3f}")
+    if "baseline_kmer" in metrics:
+        b = metrics["baseline_kmer"]
+        delta = m["macro_f1"] - b["macro_f1"]
+        print(f"\n  Baseline macro F1  : {b['macro_f1']:.3f}")
+        print(f"  DL improvement     : {delta:+.3f}")
+    print(f"\n[green]Full results:[/green] {reports_dir}/test_ani_metrics.json")
+
+
+@app.command()
 def predict(
     sequence_or_fasta: str = typer.Argument(..., help="A FASTA path or a raw DNA string."),
     model_dir: Path = typer.Option(Path("checkpoints/default/best")),
