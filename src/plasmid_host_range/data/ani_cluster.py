@@ -81,6 +81,8 @@ def compute_ani_clusters(
     num_perm: int = NUM_PERM,
     stride: int = KMER_STRIDE,
     log_every: int = 2_000,
+    sketch_checkpoint: "str | Path | None" = None,
+    save_every: int = 5_000,
 ) -> np.ndarray:
     """Cluster *sequences* by MinHash Jaccard similarity using LSH.
 
@@ -94,12 +96,22 @@ def compute_ani_clusters(
         Number of MinHash permutations.
     log_every:
         Log progress every N sequences during sketching.
+    sketch_checkpoint:
+        Path to a ``.pkl`` file for incremental checkpointing.  If the file
+        exists and contains previously computed signatures, sketching resumes
+        from the last saved index.  Signatures are flushed to disk every
+        *save_every* sequences so a crash wastes at most that much work.
+        Pass a path on Google Drive to survive Colab disconnects.
+    save_every:
+        How often (in sequences) to flush the sketch checkpoint to disk.
 
     Returns
     -------
     cluster_ids : np.ndarray, shape (len(sequences),), dtype int64
         Contiguous integer cluster IDs.  Plasmids with the same ID share ≥95% ANI.
     """
+    import pickle
+
     try:
         from datasketch import MinHashLSH
     except ImportError:
@@ -109,17 +121,45 @@ def compute_ani_clusters(
         )
 
     n = len(sequences)
-    log.info("ANI clustering: sketching %d sequences (k=%d, num_perm=%d)…", n, K, num_perm)
+    ckpt_path = Path(sketch_checkpoint) if sketch_checkpoint else None
 
-    lsh = MinHashLSH(threshold=threshold, num_perm=num_perm)
+    # ── Load partial checkpoint if available ─────────────────────────────────
     sigs: dict[str, object] = {}
+    if ckpt_path and ckpt_path.exists():
+        log.info("  Resuming from sketch checkpoint: %s", ckpt_path)
+        with open(ckpt_path, "rb") as fh:
+            sigs = pickle.load(fh)
+        log.info("  Loaded %d / %d signatures", len(sigs), n)
 
-    for i, seq in enumerate(sequences):
+    resume_from = len(sigs)
+    log.info(
+        "ANI clustering: sketching %d sequences (k=%d, num_perm=%d, resume=%d)…",
+        n, K, num_perm, resume_from,
+    )
+
+    # ── Sketch remaining sequences ────────────────────────────────────────────
+    for i in range(resume_from, n):
         if i % log_every == 0:
             log.info("  sketched %d / %d", i, n)
-        m = _build_minhash(seq, num_perm, stride)
-        lsh.insert(str(i), m)
+        m = _build_minhash(sequences[i], num_perm, stride)
         sigs[str(i)] = m
+
+        if ckpt_path and (i + 1) % save_every == 0:
+            with open(ckpt_path, "wb") as fh:
+                pickle.dump(sigs, fh)
+            log.info("  checkpoint saved at %d sequences → %s", i + 1, ckpt_path)
+
+    # Final checkpoint flush
+    if ckpt_path:
+        with open(ckpt_path, "wb") as fh:
+            pickle.dump(sigs, fh)
+        log.info("  final checkpoint saved → %s", ckpt_path)
+
+    # ── Build LSH index from all signatures ──────────────────────────────────
+    log.info("  sketching done. Building LSH index and querying pairs…")
+    lsh = MinHashLSH(threshold=threshold, num_perm=num_perm)
+    for key, sig in sigs.items():
+        lsh.insert(key, sig)
 
     log.info("  sketching done. Querying LSH for similar pairs…")
 
@@ -170,6 +210,7 @@ def ani_group_split(
     seed: int = 42,
     threshold: float = JACCARD_THRESHOLD,
     num_perm: int = NUM_PERM,
+    sketch_checkpoint: "str | Path | None" = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Compute ANI clusters then split so **no cluster spans train/val/test**.
 
@@ -183,6 +224,8 @@ def ani_group_split(
         Random seed for reproducibility.
     threshold, num_perm:
         Forwarded to :func:`compute_ani_clusters`.
+    sketch_checkpoint:
+        Path for incremental sketch checkpointing (survives Colab disconnects).
 
     Returns
     -------
@@ -193,6 +236,7 @@ def ani_group_split(
         df["sequence"].tolist(),
         threshold=threshold,
         num_perm=num_perm,
+        sketch_checkpoint=sketch_checkpoint,
     )
 
     # Split off test
@@ -220,6 +264,7 @@ def ani_group_split(
 def save_ani_test_split(
     processed_dir: str | Path,
     out_path: str | Path | None = None,
+    sketch_checkpoint: "str | Path | None" = None,
     **kwargs,
 ) -> Path:
     """Read the full processed data, compute ANI test split, save as parquet.
@@ -245,7 +290,7 @@ def save_ani_test_split(
     df_all = pd.concat(parts, ignore_index=True)
     log.info("Total plasmids: %d", len(df_all))
 
-    _, _, test_df = ani_group_split(df_all, **kwargs)
+    _, _, test_df = ani_group_split(df_all, sketch_checkpoint=sketch_checkpoint, **kwargs)
 
     test_df.to_parquet(out_path, index=False)
     log.info("ANI test split saved → %s  (%d plasmids)", out_path, len(test_df))
